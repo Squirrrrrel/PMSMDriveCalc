@@ -8,7 +8,7 @@ Built with C# (.NET 9.0), Avalonia UI, and Python bridge for AI/LLM integration.
 Calculates the complete drive simulation pipeline:
 
 1. **Steady-state dq solve** — Solve Id, Iq from target Ud/Uq with the dq voltage equations
-2. **PWM modulation** — Generate 3-phase switching waveforms (SPWM2, IPSPWM3, SVPWM2, SVPWM3)
+2. **PWM modulation** — Generate 3-phase switching waveforms (SPWM2, IPSPWM3, QuasiSVPWM2/3 via zero-sequence injection)
 3. **Time-domain transient solve** — DQ-frame backward Euler integration (2×2 motor, 6-state coupled LC+motor)
 4. **FFT spectral analysis** — Harmonic spectra of phase voltages and currents
 5. **Operating point computation** — Torque, power, efficiency, phasor diagrams
@@ -60,7 +60,7 @@ PMSMDriveCalc/
 │           (Ud, Uq → steady-state → PWM → solver → FFT)   │
 ├──────────────────────┬───────────────────────────────────┤
 │   DQ Steady-State    │         PWM Modulation Layer       │
-│  DQSteadyStateSolver  │  SPWM2 / IPSPWM3 / SVPWM2/SVPWM3 │
+│  DQSteadyStateSolver  │  SPWM2 / IPSPWM3 / QuasiSVPWM2/QuasiSVPWM3 │
 │  (matrix inversion)   │  DCFilteredPWM (decorator)       │
 │                       │  OutputLCFilter (decorator)       │
 ├──────────────────────┴───────────────────────────────────┤
@@ -118,10 +118,10 @@ Te = 1.5 × (poles/2) × [ψPM·Iq + (Ld − Lq)·Id·Iq]
 |-------|--------|-------------|
 | `SPWM2` | 2-level | Sinusoidal PWM, optional 1/6 third-harmonic injection |
 | `IPSPWM3` | 3-level | In-Phase Sinusoidal PWM, dual carrier, optional 3rd-harmonic injection |
-| `SVPWM2` | 2-level | Space-vector PWM, 6 sectors, 7-segment symmetric pattern |
-| `SVPWM3` | 3-level | NPC inverter SVPWM, 6 sectors × 4 sub-regions |
-| `QuasiSVPWM2` | 2-level | Triangular-wave third-harmonic injection (carrier-based SVPWM equivalent) |
-| `QuasiSVPWM3` | 3-level | Same for 3-level |
+| `SVPWM2` | 2-level | Space-vector PWM, 6 sectors, 7-segment symmetric pattern (redirected to QuasiSVPWM2) |
+| `SVPWM3` | 3-level | NPC inverter SVPWM, 6 sectors × 4 sub-regions (redirected to QuasiSVPWM3) |
+| `QuasiSVPWM2` | 2-level | Zero-sequence injection / saddle waveform — mathematically equivalent to SVPWM, avoids ZOH phase lag |
+| `QuasiSVPWM3` | 3-level | Same for 3-level — avoids ZOH phase lag (δθ = ω·Ts/2 ≈ 4.5° at 200 Hz, 8 kHz) |
 
 ### 3. DQ-Frame Transient Solvers ([`Solver.cs`](PMSMDriveCalc/Solver.cs))
 
@@ -232,6 +232,8 @@ The Avalonia UI desktop app provides:
 - **Inverter tab** — DC-link voltage, switching frequency, modulation strategy, target Ud/Uq
 - **Solver tab** — Solver type selection (auto-adapts to LC filter state)
 - **Results** — Operating point table (idealized vs. actual), time-domain plots, FFT spectra, phasor diagrams
+- **Info & Help dialogs** — Selectable/copyable text with detailed mathematical background
+- **Sync demodulation** — IdFund/IqFund extracted via DC-mean of id[k], iq[k] over steady-state window (immune to FFT spectral leakage)
 
 Build and run:
 ```bash
@@ -246,10 +248,10 @@ The [`python_scripts/`](python_scripts/) directory provides Python access to the
 ```python
 from pmsm_drive_calc import PMSMDriveCalcPython
 
-calc = PMSMDriveCalcPython(Ld=0.005, Lq=0.006, psi_PM=0.1, R=0.5,
-                           poles=4, speed_rpm=1500, vdc=300, fsw=8000)
-result = calc.run(Ud=10, Uq=100, modulation="SPWM2",
-                  solver_type="Transient", periods=30)
+calc = PMSMDriveCalcPython(poles=8, R=0.15, Ld=0.0025, Lq=0.005,
+                           psi_pm=0.125, speed=3000)
+result = calc.run(Vll=400.0, phase_deg=151.5, fsw=8000.0, vdc=400.0,
+                  mod="SVPWM2", solver="Transient", periods=20)
 calc.print_result(result)
 ```
 
@@ -268,4 +270,24 @@ Tool definitions for AI/LLM function calling are in [`pmsm_tools.py`](python_scr
 
 ## License
 
-This project is intended for academic research and engineering analysis.
+MIT License
+
+Copyright (c) 2025
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
