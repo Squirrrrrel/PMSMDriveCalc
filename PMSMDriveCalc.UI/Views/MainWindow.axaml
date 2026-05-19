@@ -1,0 +1,381 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sp="clr-namespace:ScottPlot.Avalonia;assembly=ScottPlot.Avalonia"
+        x:Class="PMSMDriveCalc.UI.Views.MainWindow"
+        Title="PMSM Drive Calculator"
+        Width="1280"
+        Height="840"
+        MinWidth="1000"
+        MinHeight="600"
+        WindowStartupLocation="CenterScreen">
+
+    <Window.Styles>
+        <Style Selector="TextBlock.sectionHeader">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
+            <Setter Property="Foreground" Value="#111827"/>
+        </Style>
+
+        <Style Selector="TextBlock.label">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="#374151"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,0,12,0"/>
+        </Style>
+
+        <Style Selector="TextBox, NumericUpDown, ComboBox">
+            <Setter Property="Margin" Value="0,4"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        </Style>
+
+        <Style Selector="Border.card">
+            <Setter Property="Padding" Value="16"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#E5E7EB"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BoxShadow" Value="0 1 3 0 #10000000"/>
+        </Style>
+
+    </Window.Styles>
+
+    <Grid RowDefinitions="*,Auto">
+        <!-- 1. MAIN CONTENT AREA -->
+        <Grid Grid.Row="0" ColumnDefinitions="450,*" Margin="16">
+            
+            <!-- INPUT PANEL (Left) -->
+<Grid Grid.Column="0" RowDefinitions="*,Auto">
+    <TabControl Grid.Row="0" IsEnabled="{Binding !IsComputing}">
+        <!-- MOTOR TAB -->
+        <TabItem Header="Motor">
+            <ScrollViewer>
+                <StackPanel Margin="8">
+                    <Border Classes="card">
+                        <StackPanel>
+                            <TextBlock Text="Motor Parameters" Classes="sectionHeader"/>
+                            <Grid ColumnDefinitions="*,160" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Pole Pairs:" Classes="label" ToolTip.Tip="Number of magnetic pole pairs. Electrical frequency = RPM/60 × PolePairs."/>
+                                <NumericUpDown Grid.Row="0" Grid.Column="1" Value="{Binding Poles}" Minimum="2" Maximum="100" Increment="2"/>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="PM Flux Linkage (Wb):" Classes="label" ToolTip.Tip="Permanent magnet flux linkage ψPM in webers. Determines back-EMF: E = ω·ψPM."/>
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding PMFluxLinkage}"/>
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="d-axis Inductance (H):" Classes="label" ToolTip.Tip="Direct-axis inductance Ld. For SPM: Ld ≈ Lq. For IPM: Ld &lt; Lq."/>
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Ld}"/>
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="q-axis Inductance (H):" Classes="label" ToolTip.Tip="Quadrature-axis inductance Lq. Saliency ratio ξ = Lq/Ld affects reluctance torque."/>
+                                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding Lq}"/>
+
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="Phase Resistance (Ω):" Classes="label" ToolTip.Tip="Stator phase resistance Rs. Copper losses: P_cu = 3·Rs·I_ph_rms²."/>
+                                <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding PhaseResistance}"/>
+
+                                <TextBlock Grid.Row="5" Grid.Column="0" Text="Leakage Ratio:" Classes="label" ToolTip.Tip="Ratio of stator leakage inductance to d-axis inductance (Lσ / Ld). Used for high-frequency harmonic analysis through the LC output filter. Range: 0–0.5."/>
+                                <NumericUpDown Grid.Row="5" Grid.Column="1" Value="{Binding LSigmaRatio}" Minimum="0" Maximum="0.5" Increment="0.01" FormatString="F2"
+                                               IsEnabled="{Binding EnableOutputLCFilter}"/>
+
+                                <TextBlock Grid.Row="6" Grid.Column="0" Text="Speed (RPM):" Classes="label" ToolTip.Tip="Motor mechanical speed in RPM. ω_elec = RPM/60 × PolePairs × 2π."/>
+                                <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding SpeedRpm}"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+
+        <!-- INVERTER TAB -->
+        <TabItem Header="Inverter">
+            <ScrollViewer>
+                <StackPanel Margin="8">
+                    <Border Classes="card">
+                        <StackPanel>
+                            <TextBlock Text="Target Voltage" Classes="sectionHeader"/>
+                            <Grid ColumnDefinitions="*,160" RowDefinitions="Auto,Auto">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Line-to-Line Voltage Amplitude (V):" Classes="label" ToolTip.Tip="Peak line-to-line voltage amplitude. V_LL_peak = √3 × V_ph_peak."/>
+                                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding TargetVoltage}"/>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Phase Angle (°):" Classes="label" ToolTip.Tip="Voltage phase angle in degrees. φ_v = atan2(Uq, Ud). 0° = pure q-axis voltage."/>
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding PhaseAngleDeg}"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Classes="card">
+                        <StackPanel>
+                            <TextBlock Text="PWM Settings" Classes="sectionHeader"/>
+                            <Grid ColumnDefinitions="*,160" RowDefinitions="Auto,Auto,Auto,Auto">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Switching Frequency (Hz):" Classes="label" ToolTip.Tip="PWM carrier frequency fsw. Higher fsw reduces current ripple but increases switching losses."/>
+                                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding SwitchingFrequency}"/>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="DC Link Voltage (V):" Classes="label" ToolTip.Tip="DC bus voltage Vdc. Maximum phase voltage limited by Vdc/2 (linear modulation)."/>
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding DCLink}"/>
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Modulation:" Classes="label" ToolTip.Tip="PWM modulation strategy. SPWM = sinusoidal PWM, SVPWM = space-vector PWM (internally implemented via zero-sequence injection / saddle waveform for continuous reference evaluation), IPSPWM = in-phase SPWM (3-level)."/>
+                                <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding ModulationTypes}" SelectedIndex="{Binding ModulationIndex}"/>
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="3rd Harmonic:" Classes="label" ToolTip.Tip="Enable third-harmonic injection to extend linear modulation range by ~15.5%. Available with SPWM2/IPSPWM3."/>
+                                <ComboBox Grid.Row="3" Grid.Column="1" SelectedIndex="{Binding ThirdHarmonicInjection}"
+                                          IsEnabled="{Binding IsThirdHarmonicEnabled}">
+                                    <ComboBoxItem>Off</ComboBoxItem>
+                                    <ComboBoxItem>On</ComboBoxItem>
+                                </ComboBox>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+
+        <!-- FILTERS TAB -->
+        <TabItem Header="Filters">
+            <ScrollViewer>
+                <StackPanel Margin="8">
+                    <Border Classes="card">
+                        <StackPanel>
+                            <CheckBox Content="Enable Grid-Side Filter" IsChecked="{Binding EnableGridFilter}" FontWeight="Bold" Margin="0,0,0,10"/>
+                            <Grid ColumnDefinitions="*,160" RowDefinitions="Auto,Auto,Auto,Auto,Auto" IsVisible="{Binding EnableGridFilter}">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Grid Voltage Amplitude (V):" Classes="label" ToolTip.Tip="Peak grid phase voltage amplitude Vp for three-phase rectifier model."/>
+                                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding GridVoltageAmplitude}"/>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Grid Frequency (Hz):" Classes="label" ToolTip.Tip="Grid frequency. 50 Hz (Europe/Asia), 60 Hz (Americas). Ripple at 6× grid frequency."/>
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding GridFrequency}"/>
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="DC Link Capacitance (F):" Classes="label" ToolTip.Tip="DC-link capacitance Cdc. Smooths 6-pulse rectifier ripple. Typical: 1–10 mF."/>
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding DcLinkCapacitance}"/>
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="DC Link Inductance (H):" Classes="label" ToolTip.Tip="DC-link inductance Ldc (smoothing reactor). Typical: 0.1–5 mH."/>
+                                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding DcLinkInductance}"/>
+
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="DC Load Current (A):" Classes="label" ToolTip.Tip="DC load current drawn from the rectifier. Auto-calculated from motor power and efficiency."/>
+                                <NumericUpDown Grid.Row="4" Grid.Column="1" Value="{Binding DcLoadCurrent}" IsEnabled="False" FormatString="F2"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Classes="card">
+                        <StackPanel>
+                            <CheckBox Content="Enable Output LC Filter" IsChecked="{Binding EnableOutputLCFilter}" FontWeight="Bold" Margin="0,0,0,10"/>
+                            <Grid ColumnDefinitions="*,160" RowDefinitions="Auto,Auto" IsVisible="{Binding EnableOutputLCFilter}">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Filter Inductance (H):" Classes="label" ToolTip.Tip="LC filter inductance Lf per phase. Design cutoff: fc = 1/(2π√(Lf·Cf))."/>
+                                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding FilterInductance}"/>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Filter Capacitance (F):" Classes="label" ToolTip.Tip="LC filter capacitance Cf per phase (Y-connected). Design cutoff: fc ≈ fsw/5 to fsw/10."/>
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding FilterCapacitance}"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+
+        <!-- SOLVER TAB -->
+        <TabItem Header="Solver">
+            <ScrollViewer>
+                <StackPanel Margin="8">
+                    <Border Classes="card">
+                        <Grid ColumnDefinitions="*,160" RowDefinitions="Auto,Auto">
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Solver Type:" Classes="label" ToolTip.Tip="Auto-selected based on filter configuration. DQ transient solver: 2×2 without LC filter, 6-state with LC filter."/>
+                            <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding SolverTypes}" SelectedIndex="{Binding SolverTypeIndex}" IsEnabled="False"/>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Number of Periods:" Classes="label" ToolTip.Tip="Number of fundamental periods to simulate. Higher values improve FFT resolution but increase computation time."/>
+                            <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding Periods}" Minimum="5" Maximum="200"/>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+    </TabControl>
+
+    <!-- PERSISTENT ACTION FOOTER (Raised via bottom margin) -->
+    <Border Grid.Row="1" Margin="4,8,4,20" Padding="12" Background="#F9FAFB" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8">
+        <StackPanel Spacing="8">
+            <Button Content="Calculate!"
+                    FontWeight="Bold"
+                    FontSize="14"
+                    Background="#2563EB"
+                    Foreground="White"
+                    CornerRadius="6"
+                    Height="38"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    Command="{Binding ComputeAllCommand}"
+                    IsEnabled="{Binding !IsComputing}"/>
+            <ProgressBar Height="4"
+                         CornerRadius="2"
+                         IsVisible="{Binding IsComputing}"
+                         IsIndeterminate="True"
+                         HorizontalAlignment="Stretch"/>
+            <!-- Info & Help buttons -->
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="6">
+                <Button Content="ⓘ"
+                        ToolTip.Tip="About this application"
+                        Width="32" Height="32"
+                        FontSize="16"
+                        Background="Transparent"
+                        Foreground="#6B7280"
+                        BorderBrush="#D1D5DB"
+                        BorderThickness="1"
+                        CornerRadius="16"
+                        Padding="0"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        Click="OnInfoClick"/>
+                <Button Content="?"
+                        ToolTip.Tip="Theoretical background and help"
+                        Width="32" Height="32"
+                        FontSize="16" FontWeight="Bold"
+                        Background="Transparent"
+                        Foreground="#6B7280"
+                        BorderBrush="#D1D5DB"
+                        BorderThickness="1"
+                        CornerRadius="16"
+                        Padding="0"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        Click="OnHelpClick"/>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Grid>
+            <!-- RESULTS PANEL (Right) -->
+            <TabControl Grid.Column="1" Margin="16,0,0,0">
+                <TabItem Header="Operating Point">
+                    <ScrollViewer>
+                        <Grid RowDefinitions="Auto,Auto" Margin="10">
+                            <!-- Operating Metrics Matrix Table -->
+                            <Border Grid.Row="0" Classes="card">
+                                <StackPanel>
+                                    <!-- Fluid Column Alignment Header -->
+                                    <Grid ColumnDefinitions="*,110,110" Margin="0,0,0,4">
+                                        <TextBlock Grid.Column="0" Text="" />
+                                        <TextBlock Grid.Column="1" Text="Idealized" FontWeight="Bold" FontSize="12" HorizontalAlignment="Right"/>
+                                        <TextBlock Grid.Column="2" Text="Actual" FontWeight="Bold" FontSize="12" HorizontalAlignment="Right"/>
+                                    </Grid>
+                                    
+                                    <Border Height="1" Background="#E5E7EB" Margin="0,0,0,4"/>
+                                    
+                                    <!-- Table Rows -->
+                                    <Grid ColumnDefinitions="*,110,110" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                                        <!-- Row 0: Ud -->
+                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Ud – d-axis Voltage (V):" VerticalAlignment="Center" Margin="0,2,0,2"/>
+                                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding IIdealUd, StringFormat={}{0:F1}}" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding OpUd, StringFormat={}{0:F1}}" FontWeight="Bold" Foreground="{Binding ActualForeground}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <!-- Row 1: Uq -->
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Uq – q-axis Voltage (V):" VerticalAlignment="Center" Margin="0,2,0,2"/>
+                                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding IIdealUq, StringFormat={}{0:F1}}" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding OpUq, StringFormat={}{0:F1}}" FontWeight="Bold" Foreground="{Binding ActualForeground}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <!-- Row 2: Voltage Magnitude -->
+                                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Motor Voltage Magnitude (V):" VerticalAlignment="Center" Margin="0,2,0,2"/>
+                                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding IIdealVoltageMagnitude, StringFormat={}{0:F1}}" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding OpVoltageMagnitude, StringFormat={}{0:F1}}" FontWeight="Bold" Foreground="{Binding ActualForeground}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <!-- Row 3: Id -->
+                                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Id – d-axis Current (A):" VerticalAlignment="Center" Margin="0,2,0,2"/>
+                                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding IIdealId, StringFormat={}{0:F1}}" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding OpId, StringFormat={}{0:F1}}" FontWeight="Bold" Foreground="{Binding ActualForeground}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <!-- Row 4: Iq -->
+                                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Iq – q-axis Current (A):" VerticalAlignment="Center" Margin="0,2,0,2"/>
+                                        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding IIdealIq, StringFormat={}{0:F1}}" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="4" Grid.Column="2" Text="{Binding OpIq, StringFormat={}{0:F1}}" FontWeight="Bold" Foreground="{Binding ActualForeground}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <!-- Row 5: Motor Current Magnitude -->
+                                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Motor Current Magnitude (A):" VerticalAlignment="Center" Margin="0,2,0,2"/>
+                                        <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding IIdealCurrentMagnitude, StringFormat={}{0:F1}}" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="5" Grid.Column="2" Text="{Binding OpCurrentMagnitude, StringFormat={}{0:F1}}" FontWeight="Bold" Foreground="{Binding ActualForeground}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <!-- Row 6: Torque -->
+                                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Torque (Nm):" VerticalAlignment="Center" Margin="0,2,0,2"/>
+                                        <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding IIdealTorqueNm, StringFormat={}{0:F2}}" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="6" Grid.Column="2" Text="{Binding OpTorqueNm, StringFormat={}{0:F2}}" FontWeight="Bold" Foreground="{Binding ActualForeground}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <!-- Row 7: Active Power -->
+                                        <TextBlock Grid.Row="7" Grid.Column="0" Text="Active Power (W):" VerticalAlignment="Center" Margin="0,2,0,2"/>
+                                        <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding IIdealActivePowerW, StringFormat={}{0:F1}}" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="7" Grid.Column="2" Text="{Binding OpActivePowerW, StringFormat={}{0:F1}}" FontWeight="Bold" Foreground="{Binding ActualForeground}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <!-- Row 8: Apparent Power -->
+                                        <TextBlock Grid.Row="8" Grid.Column="0" Text="Apparent Power (VA):" VerticalAlignment="Center" Margin="0,2,0,2"/>
+                                        <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding IIdealApparentPowerVA, StringFormat={}{0:F1}}" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="8" Grid.Column="2" Text="{Binding OpPwmApparentPowerVA, StringFormat={}{0:F1}}" FontWeight="Bold" Foreground="{Binding ActualForeground}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <!-- Row 9: Power Factor -->
+                                        <TextBlock Grid.Row="9" Grid.Column="0" Text="Power Factor:" VerticalAlignment="Center" Margin="0,2,0,2"/>
+                                        <TextBlock Grid.Row="9" Grid.Column="1" Text="{Binding IIdealPowerFactor, StringFormat={}{0:F3}}" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="9" Grid.Column="2" Text="{Binding OpPowerFactor, StringFormat={}{0:F3}}" FontWeight="Bold" Foreground="{Binding ActualForeground}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <!-- Row 10: Mechanical Power -->
+                                        <TextBlock Grid.Row="10" Grid.Column="0" Text="Mechanical Power (W):" VerticalAlignment="Center" Margin="0,2,0,2"/>
+                                        <TextBlock Grid.Row="10" Grid.Column="1" Text="{Binding IIdealMechanicalPowerW, StringFormat={}{0:F1}}" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="10" Grid.Column="2" Text="{Binding OpMechanicalPowerW, StringFormat={}{0:F1}}" FontWeight="Bold" Foreground="{Binding ActualForeground}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <!-- Row 11: Copper Loss -->
+                                        <TextBlock Grid.Row="11" Grid.Column="0" Text="Copper Loss (W):" VerticalAlignment="Center" Margin="0,2,0,2"/>
+                                        <TextBlock Grid.Row="11" Grid.Column="1" Text="{Binding IIdealCopperLossW, StringFormat={}{0:F1}}" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="11" Grid.Column="2" Text="{Binding OpCopperLossW, StringFormat={}{0:F1}}" FontWeight="Bold" Foreground="{Binding ActualForeground}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <!-- Row 12: Electrical Frequency -->
+                                        <TextBlock Grid.Row="12" Grid.Column="0" Text="Electrical Frequency (Hz):" VerticalAlignment="Center" Margin="0,2,0,2"/>
+                                        <TextBlock Grid.Row="12" Grid.Column="1" Text="{Binding IIdealElectricalFreqHz, StringFormat={}{0:F1}}" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="12" Grid.Column="2" Text="{Binding OpElectricalFreqHz, StringFormat={}{0:F1}}" FontWeight="Bold" Foreground="{Binding ActualForeground}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Phasor Diagrams Side-by-Side Split -->
+                            <Grid Grid.Row="1" ColumnDefinitions="*,*" Margin="0,10,0,0">
+                                <Border Grid.Column="0" Classes="card" Margin="0,0,6,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Idealized Phasor Diagram" FontWeight="Bold" FontSize="12" Margin="0,0,0,6"/>
+                                        <sp:AvaPlot x:Name="PhasorPlotIdealized" MinHeight="280" Height="300"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="1" Classes="card" Margin="6,0,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Actual Phasor Diagram" FontWeight="Bold" FontSize="12" Margin="0,0,0,6"/>
+                                        <sp:AvaPlot x:Name="PhasorPlot" MinHeight="280" Height="300"/>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </Grid>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- PWM PLOTS -->
+                <TabItem Header="PWM Voltages">
+                    <Grid RowDefinitions="*,*" Margin="10">
+                        <Border Grid.Row="0" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Margin="0,0,0,6" ClipToBounds="True" Background="White">
+                            <sp:AvaPlot x:Name="VoltageTimePlot"/>
+                        </Border>
+                        <Border Grid.Row="1" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Margin="0,6,0,0" ClipToBounds="True" Background="White">
+                            <sp:AvaPlot x:Name="VoltageFFTPlot"/>
+                        </Border>
+                    </Grid>
+                </TabItem>
+
+                <!-- MOTOR VOLTAGE PLOTS -->
+                <TabItem Header="Motor Voltage" IsVisible="{Binding EnableOutputLCFilter}">
+                    <Grid RowDefinitions="*,*" Margin="10">
+                        <Border Grid.Row="0" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Margin="0,0,0,6" ClipToBounds="True" Background="White">
+                            <sp:AvaPlot x:Name="MotorVoltageTimePlot"/>
+                        </Border>
+                        <Border Grid.Row="1" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Margin="0,6,0,0" ClipToBounds="True" Background="White">
+                            <sp:AvaPlot x:Name="MotorVoltageFFTPlot"/>
+                        </Border>
+                    </Grid>
+                </TabItem>
+
+                <!-- MOTOR CURRENT PLOTS -->
+                <TabItem Header="Motor Current">
+                    <Grid RowDefinitions="*,*" Margin="10">
+                        <Border Grid.Row="0" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Margin="0,0,0,6" ClipToBounds="True" Background="White">
+                            <sp:AvaPlot x:Name="CurrentTimePlot"/>
+                        </Border>
+                        <Border Grid.Row="1" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Margin="0,6,0,0" ClipToBounds="True" Background="White">
+                            <sp:AvaPlot x:Name="CurrentFFTPlot"/>
+                        </Border>
+                    </Grid>
+                </TabItem>
+            </TabControl>
+        </Grid>
+
+        <!-- 2. STATUS BAR -->
+        <Border Grid.Row="1" Padding="12,6" Background="#F9FAFB" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0">
+            <TextBlock Text="{Binding StatusMessage}" FontSize="12" Foreground="#4B5563"/>
+        </Border>
+    </Grid>
+</Window>
