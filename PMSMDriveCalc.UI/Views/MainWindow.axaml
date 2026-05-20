@@ -125,6 +125,17 @@
                             </Grid>
                         </StackPanel>
                     </Border>
+
+                    <Border Classes="card">
+                        <StackPanel>
+                            <CheckBox Content="Enable Dead-Time Effect" IsChecked="{Binding EnableDeadTimeEffect}" FontWeight="Bold" Margin="0,0,0,10"
+                                      ToolTip.Tip="When enabled, applies a per-sample voltage error ΔV_err = −sign(i_phase) · (td/Ts) · Vdc to simulate inverter dead-time non-linearity. This introduces characteristic 5th, 7th, 11th, 13th, … harmonics in the motor current spectrum."/>
+                            <Grid ColumnDefinitions="*,160" RowDefinitions="Auto" IsVisible="{Binding EnableDeadTimeEffect}">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Dead-Time (µs):" Classes="label" ToolTip.Tip="Blanking time (dead-time) in microseconds. Typical IGBT: 1–4 µs. SiC MOSFET: 0.2–1 µs. The voltage error is proportional to (td/Ts) · Vdc."/>
+                                <NumericUpDown Grid.Row="0" Grid.Column="1" Value="{Binding DeadTimeUs}" Minimum="0" Maximum="10" Increment="0.5" FormatString="F1"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </ScrollViewer>
         </TabItem>

@@ -42,6 +42,10 @@ public partial class MainViewModel : ObservableObject
     /// <summary>3rd harmonic injection is only meaningful for SPWM2 (index 0) and IPSPWM3 (index 1).</summary>
     public bool IsThirdHarmonicEnabled => ModulationIndex == 0 || ModulationIndex == 1;
 
+    // ── Dead-time effect (inverter non-linearity) ──
+    [ObservableProperty] private bool _enableDeadTimeEffect;
+    [ObservableProperty] private double _deadTimeUs = 2.0;                     // Dead-time in µs (typical IGBT: 1–4 µs)
+
     // ── Output filter (LC filter between inverter & motor) ──
     [ObservableProperty] private bool _enableOutputLCFilter;
     [ObservableProperty] private double _filterInductance = 0.0004;       // Lf (H)
@@ -268,6 +272,12 @@ public partial class MainViewModel : ObservableObject
             // ── Wire output filters ──
             ICanOutputVoltage finalOutput = pwm;
 
+            // 0. Dead-time effect (applies per-sample voltage error before other decorators)
+            if (EnableDeadTimeEffect)
+            {
+                finalOutput = new DeadTimePWM(finalOutput, motor, DeadTimeUs);
+            }
+
             // 1. Grid-side DC-link ripple filter (wraps PWM)
             if (EnableGridFilter)
             {
@@ -277,7 +287,7 @@ public partial class MainViewModel : ObservableObject
                 double estPower = OperatingPoint?.ActivePowerW ?? 5000;
                 grid.SetLoadFromMotorPower(estPower);
                 DcLoadCurrent = grid.AverageDCCurrent;
-                finalOutput = new DCFilteredPWM(pwm, grid, DCLink);
+                finalOutput = new DCFilteredPWM(finalOutput, grid, DCLink);
             }
 
             // 2. Motor-side LC output filter (wraps DCFilteredPWM or raw PWM)
@@ -372,7 +382,8 @@ public partial class MainViewModel : ObservableObject
             StatusMessage = $"Complete. {pts} time points, " +
                 $"Torque={driveResult.OperatingPoint.TorqueNm:F4} Nm" +
                 (EnableOutputLCFilter ? " (LC filter active)" : "") +
-                (EnableGridFilter ? " (grid ripple active)" : "");
+                (EnableGridFilter ? " (grid ripple active)" : "") +
+                (EnableDeadTimeEffect ? $" (dead-time {DeadTimeUs:F1}µs)" : "");
         }
         catch (Exception ex)
         {

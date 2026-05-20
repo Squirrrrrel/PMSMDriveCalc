@@ -161,6 +161,8 @@ from PMSMDriveCalc import (
     OutputLCFilter,
     GridRectifierFilter,
     DCFilteredPWM,
+    # Dead-time effect
+    DeadTimePWM,
     # Misc
     FFTContainer,
 )
@@ -382,6 +384,7 @@ class PMSMDriveCalcPython:
         grid_freq: float = 50.0,
         dc_cap: float = 0.0035,
         dc_ind: float = 0.0005,
+        dead_time_us: float = 0.0,
         L_sigma_ratio: Optional[float] = None,
     ) -> ComputationResult:
         """
@@ -434,6 +437,12 @@ class PMSMDriveCalcPython:
             DC-link capacitance (F).
         dc_ind : float
             DC-link series inductance (H).
+        dead_time_us : float
+            Dead-time (blanking time) in microseconds. When > 0, a DeadTimePWM
+            decorator applies the per-sample voltage error ΔV_err = −sign(i_phase) ·
+            (td/Ts) · Vdc to simulate inverter non-linearity.  Typical IGBT: 1–4 µs,
+            SiC MOSFET: 0.2–1 µs.  Produces characteristic 5th, 7th, 11th, 13th, …
+            harmonics in the motor current spectrum. Default 0.0 (disabled).
         L_sigma_ratio : float, optional
             Leakage/d-axis inductance ratio (Lσ/Ld). If None (default), uses the value
             set in __init__ (default 0.1). Range 0.0–0.5.
@@ -473,12 +482,16 @@ class PMSMDriveCalcPython:
 
         final_output: ICanOutputVoltage = pwm
 
+        # ── Dead-time effect (applies per-sample voltage error before other decorators) ──
+        if dead_time_us > 0:
+            final_output = DeadTimePWM(final_output, motor, dead_time_us)
+
         # ── Grid-side DC-link ripple filter ──
         if grid_filter:
             grid = GridRectifierFilter(grid_Vpk, grid_freq, dc_cap, dc_ind)
             est_power = 5000.0  # nominal estimate
             grid.SetLoadFromMotorPower(est_power)
-            final_output = DCFilteredPWM(pwm, grid, vdc)
+            final_output = DCFilteredPWM(final_output, grid, vdc)
 
         # ── Motor-side LC output filter ──
         if lc_filter:

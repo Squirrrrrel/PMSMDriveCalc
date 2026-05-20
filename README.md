@@ -9,9 +9,10 @@ Calculates the complete drive simulation pipeline:
 
 1. **Steady-state dq solve** — Solve Id, Iq from target Ud/Uq with the dq voltage equations
 2. **PWM modulation** — Generate 3-phase switching waveforms (SPWM2, IPSPWM3, QuasiSVPWM2/3 via zero-sequence injection)
-3. **Time-domain transient solve** — DQ-frame backward Euler integration (2×2 motor, 6-state coupled LC+motor)
-4. **FFT spectral analysis** — Harmonic spectra of phase voltages and currents
-5. **Operating point computation** — Torque, power, efficiency, phasor diagrams
+3. **Dead-time effect** — Decorator applying per-sample voltage error ΔV_err = −sign(i_phase)·(td/Ts)·Vdc
+4. **Time-domain transient solve** — DQ-frame backward Euler integration (2×2 motor, 6-state coupled LC+motor)
+5. **FFT spectral analysis** — Harmonic spectra of phase voltages and currents
+6. **Operating point computation** — Torque, power, efficiency, phasor diagrams
 
 ## Project Structure
 
@@ -25,6 +26,7 @@ PMSMDriveCalc/
 │   ├── Solver.cs                             # DQ-frame transient solvers + SolverType enum
 │   ├── SPWM.cs                               # SPWM2, IPSPWM3, QuasiSVPWM2/3 modulation
 │   ├── SVPWM.cs                              # SVPWM2, SVPWM3 space-vector modulation
+│   ├── DeadTimePWM.cs                        # Dead-time effect decorator (inverter non-linearity)
 │   ├── LCFilter.cs                           # Y-connected LC output filter
 │   ├── GridFilter.cs                         # Grid-side DC-link ripple & AFE filter
 │   ├── Miscellaneous.cs                      # FFT, geometry, list operations
@@ -60,8 +62,9 @@ PMSMDriveCalc/
 │           (Ud, Uq → steady-state → PWM → solver → FFT)   │
 ├──────────────────────┬───────────────────────────────────┤
 │   DQ Steady-State    │         PWM Modulation Layer       │
-│  DQSteadyStateSolver  │  SPWM2 / IPSPWM3 / QuasiSVPWM2/QuasiSVPWM3 │
-│  (matrix inversion)   │  DCFilteredPWM (decorator)       │
+│   DQSteadyStateSolver  │  SPWM2 / IPSPWM3 / QuasiSVPWM2/QuasiSVPWM3 │
+│  (matrix inversion)   │  DeadTimePWM (decorator)        │
+│                       │  DCFilteredPWM (decorator)       │
 │                       │  OutputLCFilter (decorator)       │
 ├──────────────────────┴───────────────────────────────────┤
 │              DQ-Frame Transient Solvers                    │
@@ -82,7 +85,7 @@ PMSMDriveCalc/
 | Pattern | Applied at | Description |
 |---------|-----------|-------------|
 | **Strategy** | `PWM` base class | Interchangeable PWM modulation strategies |
-| **Decorator** | `DCFilteredPWM`, `OutputLCFilter` | Layer filtering/ripple on any PWM output |
+| **Decorator** | `DeadTimePWM`, `DCFilteredPWM`, `OutputLCFilter` | Layer dead-time effect, filtering/ripple on any PWM output |
 | **MVVM** | `MainViewModel` + `MainWindow` | Source-generated observable properties & commands |
 
 ## Core Modules
@@ -179,13 +182,15 @@ Pipeline:
 1. Steady-state solve → Id, Iq, torque, phase voltage magnitude/angle
 2. Inverse Park + Clarke → 3-phase sinusoidal references
 3. PWM modulation → switching voltage waveforms
-4. Transient solver → time-domain motor currents
-5. FFT analysis → harmonic spectra of voltages and currents
+4. Dead-time effect → per-sample voltage correction −sign(i_phase)·(td/Ts)·Vdc (when enabled)
+5. Transient solver → time-domain motor currents
+6. FFT analysis → harmonic spectra of voltages and currents
 
 ### 5. Filters
 
 | File | Class | Function |
 |------|-------|----------|
+| [`DeadTimePWM.cs`](PMSMDriveCalc/DeadTimePWM.cs) | `DeadTimePWM` | Decorator applying per-sample voltage error ΔV_err = −sign(i_phase)·(td/Ts)·Vdc to simulate inverter blanking-time non-linearity. Introduces 5th, 7th, 11th, 13th… characteristic harmonics. |
 | [`LCFilter.cs`](PMSMDriveCalc/LCFilter.cs) | `OutputLCFilter` | Y-connected LC low-pass filter (Lf per phase, Cf Y-connected). In DQ-frame path, the `DQTransientSolverWithLCFilterFull` handles the coupled dynamics. |
 | [`GridFilter.cs`](PMSMDriveCalc/GridFilter.cs) | `GridRectifierFilter` | Grid → diode rectifier → DC link (6ω ripple) |
 | [`GridFilter.cs`](PMSMDriveCalc/GridFilter.cs) | `DCFilteredPWM` | Decorator injecting DC-link ripple into PWM output |

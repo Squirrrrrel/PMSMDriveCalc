@@ -88,6 +88,7 @@ public partial class MainWindow : Window
                     "• LC output filter simulation with coupled DQ 6-state transient solver\n" +
                     "• Grid-side DC-link ripple filter modeling (6-pulse rectifier)\n" +
                     "• FFT spectrum analysis of phase voltages and currents\n" +
+                    "• Dead-time effect modeling (inverter blanking-time non-linearity)\n" +
                     "• Operating point computation: torque, power, efficiency\n" +
                     "• Phasor diagram visualization (dq reference frame)\n" +
                     "• Idealized vs. actual comparison with deviation highlighting"),
@@ -165,7 +166,8 @@ public partial class MainWindow : Window
 
                         SubHeader("Step 2 — Configure the Inverter"),
                         Body("On the 'Inverter' tab, set the DC-link voltage (Vdc), switching frequency (Hz), the target voltage amplitude (V_LL_peak — this is the line-to-line peak = √3 × V_ph_peak), and the phase angle in degrees. Choose the PWM modulation strategy (SPWM2, IPSPWM3, SVPWM2, or SVPWM3). For extended voltage range, enable third-harmonic injection (only available with SPWM2 or IPSPWM3). The modulation index m = V_ph_peak / (Vdc/2) must stay ≤ 1.0 for SPWM2 and ≤ 1.155 for SVPWM2/IPSPWM3/SVPWM3.\n\n" +
-                             "Note: SVPWM2 and SVPWM3 are internally implemented via QuasiSVPWM (zero-sequence injection / saddle waveform), which is mathematically equivalent to traditional space-vector PWM but avoids ZOH phase lag by evaluating the reference continuously at every sub-sample (200× per switching period)."),
+                             "Note: SVPWM2 and SVPWM3 are internally implemented via QuasiSVPWM (zero-sequence injection / saddle waveform), which is mathematically equivalent to traditional space-vector PWM but avoids ZOH phase lag by evaluating the reference continuously at every sub-sample (200× per switching period).\n\n" +
+                             "• Dead-Time Effect: Check \"Enable Dead-Time Effect\" to simulate inverter blanking-time non-linearity. Set the dead-time in microseconds (µs). Typical IGBT: 2 µs, SiC MOSFET: 0.5 µs. The model applies a per-sample voltage error ΔV_err = −sign(i_phase) × (td/Ts) × Vdc, producing characteristic 5th, 7th, 11th, 13th, … harmonics in the motor current FFT."),
 
                         SubHeader("Step 3 — (Optional) Configure Filters"),
                         Body("• LC Output Filter: Insert an LC low-pass filter between inverter and motor terminals. Set the filter inductance Lf (H) and filter capacitance Cf (F, Y-connected per-phase). Enable the checkbox — the solver auto-selects 'Full-Transient (DQ 6-State)'. Design tip: choose cutoff fc = 1/(2π√(Lf·Cf)) such that f_base ≪ fc ≪ fsw (typically fc ≈ fsw/5 to fsw/10). The Leakage Ratio on the Motor tab becomes enabled. The Leakage Ratio parameter sets the leakage inductance used for high-frequency harmonic analysis through the filter.\n" +
@@ -253,9 +255,37 @@ public partial class MainWindow : Window
                             "In the GUI, selecting 'SVPWM2' or 'SVPWM3' automatically dispatches to QuasiSVPWM2 or QuasiSVPWM3 internally. The original SVPWM2/SVPWM3 classes (with subdomain/sector computation) are preserved in the source code for reference but are not used by the GUI."),
 
                       // ═══════════════════════════════════════════
-                      // SECTION 3: LC Output Filter
+                      // SECTION 3: Dead-Time Effect (Inverter Non-Linearity)
                         // ═══════════════════════════════════════════
-                        Sep(), SectionHeader("📘 3. LC Output Filter"),
+                        Sep(), SectionHeader("📘 3. Dead-Time Effect (Inverter Non-Linearity)"),
+
+                        Body("In a voltage-source inverter, each leg consists of two switches (upper and lower) connected in series across the DC-link. To prevent shoot-through short circuits, a blanking interval (dead-time, td) is inserted between turning off one switch and turning on its complement. During td, both switches are off, and the output voltage is determined by the phase current direction through the freewheeling diodes."),
+
+                        SubHeader("Voltage Error per Switching Period"),
+                        Body("  ΔV_err,phase = −sign(i_phase) × (td / Ts) × Vdc\n\n" +
+                             "where Ts = 1/fsw is the switching period. The error magnitude for typical values:\n\n" +
+                             "  • td = 2 µs, fsw = 8 kHz: td/Ts = 2/125 = 1.6%, ΔV ≈ 6.4 V (on 400 V DC-link)\n" +
+                             "  • td = 0.5 µs, fsw = 16 kHz: td/Ts = 0.5/62.5 = 0.8%, ΔV ≈ 3.2 V\n\n" +
+                             "This non-linear disturbance depends on the sign of the phase current, producing a square-wave-like voltage error at the fundamental frequency."),
+
+                        SubHeader("Characteristic Harmonics"),
+                        Body("The sign-function square wave Fourier-decomposes into odd harmonics of the fundamental. In a balanced 3-phase system, these produce characteristic current harmonics at orders 5, 7, 11, 13, 17, 19, … (6k ± 1). The 5th harmonic is negative-sequence (rotates opposite to fundamental); the 7th is positive-sequence. These are a well-known fingerprint of inverter dead-time non-linearity."),
+
+                        SubHeader("Implementation (Serial Decorator Chain)"),
+                        Body("The DeadTimePWM decorator implements the ICanOutputVoltage interface, applying per-sample correction at every time step (200× per switching period). It is the first decorator in the serial chain:\n\n" +
+                             "  ICanOutputVoltage finalOutput = pwm;\n" +
+                             "  finalOutput = new DeadTimePWM(finalOutput, motor, deadTimeUs);   // 1st\n" +
+                             "  finalOutput = new DCFilteredPWM(finalOutput, grid, DCLink);      // 2nd\n" +
+                             "  finalOutput = new OutputLCFilter(finalOutput, ...);              // 3rd\n\n" +
+                             "Each stage wraps finalOutput — the accumulated result of all previous corrections. Dead-time is first because it is an inverter-internal phenomenon that occurs before DC-link ripple modulation and output filtering."),
+
+                        SubHeader("Steady-State Current Approximation"),
+                        Body("The dead-time correction depends on sign(i_phase), but i_phase is the solver output — a circular dependency. The implementation uses a one-pass approximation: steady-state Id, Iq are solved from the target dq voltages using matrix inversion, then 3-phase currents are reconstructed at each sample via inverse Park transform. The sign function only needs correct zero-crossing timing, not exact amplitude, so this approximation is sufficient for harmonic analysis."),
+
+                      // ═══════════════════════════════════════════
+                      // SECTION 4: LC Output Filter
+                        // ═══════════════════════════════════════════
+                        Sep(), SectionHeader("📘 4. LC Output Filter"),
 
                         Body("A Y-connected LC low-pass filter can be placed between the inverter output and motor terminals. The three filter capacitors are Y-connected with a floating star point — identical to the motor winding topology. This 3-wire (no neutral) configuration is assumed throughout all models in this application. It attenuates PWM switching-frequency harmonics, reducing motor insulation stress, bearing currents, and high-frequency iron losses."),
 
@@ -291,9 +321,9 @@ public partial class MainWindow : Window
                              "  DQ→ABC output conversion uses inverse Park+Clarke to produce 3-phase motor currents, capacitor voltages, and filter inductor currents."),
 
                         // ═══════════════════════════════════════════
-                        // SECTION 4: Grid-Side DC-Link Ripple Filter
+                        // SECTION 5: Grid-Side DC-Link Ripple Filter
                         // ═══════════════════════════════════════════
-                        Sep(), SectionHeader("📘 4. Grid-Side DC-Link Ripple Filter"),
+                        Sep(), SectionHeader("📘 5. Grid-Side DC-Link Ripple Filter"),
 
                         Body("Models a three-phase diode bridge rectifier feeding an LC DC-link filter. The rectifier produces a characteristic 6-pulse ripple at 6× the grid frequency (300 Hz for 50 Hz grid, 360 Hz for 60 Hz).\n\n" +
                              "Parameters:\n" +
@@ -306,9 +336,9 @@ public partial class MainWindow : Window
                              "The ripple voltage ΔVdc modulates the PWM output amplitude, creating low-frequency sidebands around the switching harmonics in the FFT spectrum."),
 
                         // ═══════════════════════════════════════════
-                        // SECTION 5: Solvers
+                        // SECTION 6: Solvers
                         // ═══════════════════════════════════════════
-                        Sep(), SectionHeader("📘 5. Solver Types"),
+                        Sep(), SectionHeader("📘 6. Solver Types"),
 
                         Body("All solvers operate in the dq (synchronous) reference frame. The Clarke transform used for ABC→DQ conversion is zero-sequence-rejecting: v_α = (2U−V−W)/3, v_β = (V−W)/√3. This ensures that 3rd harmonic common-mode voltage (from SPWM third-harmonic injection) is canceled and does not produce non-physical 3rd harmonic currents."),
 
@@ -335,9 +365,9 @@ public partial class MainWindow : Window
                              "    • Full-Transient (DQ 6-State): With LC output filter enabled — captures true coupled dynamics"),
 
                         // ═══════════════════════════════════════════
-                        // SECTION 6: Phasor Diagrams
+                        // SECTION 7: Phasor Diagrams
                         // ═══════════════════════════════════════════
-                        Sep(), SectionHeader("📘 6. Phasor Diagrams (dq Frame)"),
+                        Sep(), SectionHeader("📘 7. Phasor Diagrams (dq Frame)"),
 
                         Body("Two phasor plots are shown on the 'Phasor Diagrams' tab:\n" +
                              "  • 'Actual' — Built from the time-domain extracted dq voltages and currents.\n" +
@@ -358,24 +388,25 @@ public partial class MainWindow : Window
                              "Comparing the two diagrams reveals the effect of PWM distortion, filter voltage drop, and solver accuracy on the operating point."),
 
                         // ═══════════════════════════════════════════
-                        // SECTION 7: Idealized vs. Actual
+                        // SECTION 8: Idealized vs. Actual
                         // ═══════════════════════════════════════════
-                        Sep(), SectionHeader("📘 7. Idealized vs. Actual Comparison"),
+                        Sep(), SectionHeader("📘 8. Idealized vs. Actual Comparison"),
 
                         Body("The operating point table shows side-by-side columns:\n\n" +
                              "  Idealized — Computed from the steady-state dq model using the target Ud/Uq (with LC filter correction if enabled). This represents what the drive should theoretically achieve with perfect sinusoidal PWM output.\n\n" +
                              "  Actual — Extracted from the time-domain simulation results. Includes PWM distortion, filter dynamics, solver discretization, and transient effects.\n\n" +
                              "Deviation highlighting: If |Idealized − Actual| > 0.5 V for any of Ud, Uq, or Voltage Magnitude, the 'Actual' column values turn orange (#E67E22) to alert the user. This typically occurs when:\n" +
                              "  • Modulation index is too high (overmodulation — voltage clipping)\n" +
+                             "  • Dead-time effect causes fundamental voltage drop (especially at high td/Ts ratio)\n" +
                              "  • Switching frequency is too low relative to fundamental (insufficient samples per period)\n" +
                              "  • LC filter causes a significant fundamental voltage drop\n" +
                              "  • Solver hasn't reached steady state (increase number of periods)\n" +
                              "  • DC-link ripple is modulating the PWM output"),
 
                         // ═══════════════════════════════════════════
-                        // SECTION 8: FFT Spectral Analysis
+                        // SECTION 9: FFT Spectral Analysis
                         // ═══════════════════════════════════════════
-                        Sep(), SectionHeader("📘 8. FFT Spectral Analysis"),
+                        Sep(), SectionHeader("📘 9. FFT Spectral Analysis"),
 
                         Body("Fast Fourier Transform (FFT) is computed on the last few periods of steady-state waveforms using a Hanning window. The spectrum is displayed as frequency (Hz) vs. magnitude.\n\n" +
                              "Three FFT plot groups:\n" +
@@ -386,9 +417,9 @@ public partial class MainWindow : Window
                              "Windowing: A Hanning window w[n] = 0.5·(1 − cos(2πn/N)) is applied to reduce spectral leakage from non-integer-period sampling. The window is applied to the last N samples (user-configurable periods × samples per period)."),
 
                         // ═══════════════════════════════════════════
-                        // SECTION 9: Operating Point Calculations
+                        // SECTION 10: Operating Point Calculations
                         // ═══════════════════════════════════════════
-                        Sep(), SectionHeader("📘 9. Operating Point Calculations"),
+                        Sep(), SectionHeader("📘 10. Operating Point Calculations"),
 
                         Body("The 'Operating Point' table displays key performance metrics computed from both idealized and actual dq quantities:\n\n" +
                              "  • Torque (Nm) — Te from the torque equation (Section 1)\n" +
@@ -402,9 +433,9 @@ public partial class MainWindow : Window
                              "Copper losses: Pcu = 1.5 × Rs × (Id² + Iq²). Iron losses (eddy current + hysteresis) are not explicitly modeled in this version."),
 
                         // ═══════════════════════════════════════════
-                        // SECTION 10: Verification & Validation
+                        // SECTION 11: Verification & Validation
                         // ═══════════════════════════════════════════
-                        Sep(), SectionHeader("📘 10. Verification & Validation Tips"),
+                        Sep(), SectionHeader("📘 11. Verification & Validation Tips"),
 
                         Body("To verify that simulation results are physically meaningful, check the following:\n\n" +
                              "  1. DC case (ω = 0): Set speed to 0 RPM. The motor becomes purely resistive — Id = Ud/Rs, Iq = Uq/Rs. Torque = 1.5×(p/2)×ψPM×Iq (no reluctance term). Verify this analytically.\n\n" +
@@ -415,9 +446,9 @@ public partial class MainWindow : Window
                              "  6. Modulation limit: Set target voltage above the linear modulation limit. Observe overmodulation effects: voltage clipping in time-domain plots, increased low-order harmonics in FFT, and orange-highlighted deviation in the operating point table."),
 
                         // ═══════════════════════════════════════════
-                        // SECTION 11: Troubleshooting
+                        // SECTION 12: Troubleshooting
                         // ═══════════════════════════════════════════
-                        Sep(), SectionHeader("📘 11. Troubleshooting Common Issues"),
+                        Sep(), SectionHeader("📘 12. Troubleshooting Common Issues"),
 
                         SubHeader("Orange-highlighted values (deviation > 0.5 V)"),
                         Body("• Reduce target voltage or increase DC-link voltage to stay within linear modulation range.\n• Increase switching frequency (more samples per fundamental period for better accuracy).\n• Increase the number of simulated periods for better steady-state convergence.\n• If using LC filter, check that the filter cutoff is well above fundamental but well below switching frequency."),
@@ -426,7 +457,7 @@ public partial class MainWindow : Window
                         Body("• Check phase resistance Rs — high resistance causes large copper losses proportional to I².\n• Verify that the motor is not operating in deep field weakening (large negative Id increases current magnitude without producing useful torque).\n• The operating point may be far from the optimal MTPA (Maximum Torque Per Ampere) trajectory."),
 
                         SubHeader("FFT shows unexpected harmonics"),
-                        Body("• Overmodulation: fundamental > linear limit → low-order harmonics (5th, 7th, 11th, 13th).\n• Insufficient simulation time: transients not decayed. Increase number of periods.\n• Grid-side ripple: check for 300/360 Hz sidebands around switching harmonics.\n• Aliasing: ensure samples per period × f_base ≪ fsw (at least 20× margin)."),
+                        Body("• Overmodulation: fundamental > linear limit → low-order harmonics (5th, 7th, 11th, 13th).\n• Dead-time effect: characteristic 5th, 7th, 11th, 13th harmonics in current FFT. Toggle dead-time on/off to isolate.\n• Insufficient simulation time: transients not decayed. Increase number of periods.\n• Grid-side ripple: check for 300/360 Hz sidebands around switching harmonics.\n• Aliasing: ensure samples per period × f_base ≪ fsw (at least 20× margin)."),
 
                         SubHeader("Phasor diagrams look wrong"),
                         Body("• Current phasor angle should be approximately 90° lagging voltage in inductive region.\n• Back-EMF arrow (jω·ψPM) should always point along q-axis with magnitude proportional to speed.\n• If motor terminal voltage is much smaller than back-EMF, the motor may be generating (regenerative braking).\n• For IPM with negative Id, the voltage phasor map shifts due to cross-coupling terms."),

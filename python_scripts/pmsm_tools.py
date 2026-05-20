@@ -84,6 +84,7 @@ def compute_pmsm_drive(
     grid_Vpk: float = 245.0,
     grid_freq: float = 50.0,
     dc_cap: float = 0.0035,
+    dead_time_us: float = 0.0,
     dc_ind: float = 0.0005,
 ) -> Dict[str, Any]:
     """
@@ -150,6 +151,11 @@ def compute_pmsm_drive(
         DC-link capacitance in farads.
     dc_ind : float
         DC-link series inductance in henries.
+    dead_time_us : float
+        Dead-time (blanking time) in microseconds. When > 0, a DeadTimePWM
+        decorator applies per-sample voltage error ΔV_err = −sign(i_phase) ·
+        (td/Ts) · Vdc. Typical IGBT: 1–4 µs, SiC MOSFET: 0.2–1 µs.
+        Introduces characteristic 5th/7th harmonic signature. Default 0.0.
 
     Returns
     -------
@@ -173,6 +179,7 @@ def compute_pmsm_drive(
         grid_filter=grid_filter,
         grid_Vpk=grid_Vpk, grid_freq=grid_freq,
         dc_cap=dc_cap, dc_ind=dc_ind,
+        dead_time_us=dead_time_us,
     )
 
     # ── Build a flat, JSON-friendly operating-point dict ──
@@ -322,6 +329,7 @@ def get_waveforms(
     grid_freq: float = 50.0,
     dc_cap: float = 0.0035,
     dc_ind: float = 0.0005,
+    dead_time_us: float = 0.0,
     max_samples: int = 500,
 ) -> Dict[str, Any]:
     """
@@ -332,6 +340,10 @@ def get_waveforms(
 
     Parameters
     ----------
+    dead_time_us : float
+        Dead-time (blanking time) in microseconds. When > 0, a DeadTimePWM
+        decorator applies per-sample voltage error to simulate inverter
+        non-linearity (default 0.0 = disabled).
     max_samples : int
         Maximum number of time samples to return (default 500). The raw arrays
         can have 100K+ samples; this down-samples for LLM-friendly output.
@@ -357,6 +369,7 @@ def get_waveforms(
         grid_filter=grid_filter,
         grid_Vpk=grid_Vpk, grid_freq=grid_freq,
         dc_cap=dc_cap, dc_ind=dc_ind,
+        dead_time_us=dead_time_us,
     )
 
     n = len(result.time)
@@ -428,6 +441,7 @@ def get_fft_spectra(
     grid_freq: float = 50.0,
     dc_cap: float = 0.0035,
     dc_ind: float = 0.0005,
+    dead_time_us: float = 0.0,
     max_harmonics: int = 100,
 ) -> Dict[str, Any]:
     """
@@ -435,6 +449,10 @@ def get_fft_spectra(
 
     Parameters
     ----------
+    dead_time_us : float
+        Dead-time (blanking time) in microseconds. When > 0, a DeadTimePWM
+        decorator applies per-sample voltage error to simulate inverter
+        non-linearity (default 0.0 = disabled).
     max_harmonics : int
         Maximum harmonic order to include (default 100). Fundamental = order 1.
 
@@ -461,6 +479,7 @@ def get_fft_spectra(
         grid_filter=grid_filter,
         grid_Vpk=grid_Vpk, grid_freq=grid_freq,
         dc_cap=dc_cap, dc_ind=dc_ind,
+        dead_time_us=dead_time_us,
     )
 
     out: Dict[str, Any] = {
@@ -747,6 +766,18 @@ TOOL_DEFINITIONS: List[Dict[str, Any]] = [
                         "description": "DC-link series inductance (henries).",
                         "default": 0.0005,
                     },
+                    "dead_time_us": {
+                        "type": "number",
+                        "description": (
+                            "Dead-time (blanking time) in microseconds. When > 0, "
+                            "a DeadTimePWM decorator applies per-sample voltage error "
+                            "ΔV_err = −sign(i_phase) · (td/Ts) · Vdc to simulate "
+                            "inverter non-linearity. Typical IGBT: 1–4 µs, SiC MOSFET: "
+                            "0.2–1 µs. Introduces characteristic 5th, 7th, 11th, 13th, … "
+                            "harmonics. Default 0.0 (disabled)."
+                        ),
+                        "default": 0.0,
+                    },
                 },
                 "required": [],
             },
@@ -869,6 +900,18 @@ TOOL_DEFINITIONS: List[Dict[str, Any]] = [
                     "grid_freq": {"type": "number", "default": 50},
                     "dc_cap": {"type": "number", "default": 0.0035},
                     "dc_ind": {"type": "number", "default": 0.0005},
+                    "dead_time_us": {
+                        "type": "number",
+                        "description": (
+                            "Dead-time (blanking time) in microseconds. When > 0, "
+                            "a DeadTimePWM decorator applies per-sample voltage error "
+                            "ΔV_err = −sign(i_phase) · (td/Ts) · Vdc to simulate "
+                            "inverter non-linearity. Typical IGBT: 1–4 µs, SiC MOSFET: "
+                            "0.2–1 µs. Introduces characteristic 5th, 7th, 11th, 13th, … "
+                            "harmonics. Default 0.0 (disabled)."
+                        ),
+                        "default": 0.0,
+                    },
                     "max_samples": {
                         "type": "integer",
                         "description": "Max waveform samples to return.",
@@ -929,6 +972,18 @@ TOOL_DEFINITIONS: List[Dict[str, Any]] = [
                     "grid_freq": {"type": "number", "default": 50},
                     "dc_cap": {"type": "number", "default": 0.0035},
                     "dc_ind": {"type": "number", "default": 0.0005},
+                    "dead_time_us": {
+                        "type": "number",
+                        "description": (
+                            "Dead-time (blanking time) in microseconds. When > 0, "
+                            "a DeadTimePWM decorator applies per-sample voltage error "
+                            "ΔV_err = −sign(i_phase) · (td/Ts) · Vdc to simulate "
+                            "inverter non-linearity. Typical IGBT: 1–4 µs, SiC MOSFET: "
+                            "0.2–1 µs. Introduces characteristic 5th, 7th, 11th, 13th, … "
+                            "harmonics. Default 0.0 (disabled)."
+                        ),
+                        "default": 0.0,
+                    },
                     "max_harmonics": {
                         "type": "integer",
                         "description": "Max harmonic order to include.",
@@ -1102,6 +1157,9 @@ def _add_all_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--grid-freq", type=float, default=50, dest="grid_freq")
     parser.add_argument("--dc-cap", type=float, default=0.0035, dest="dc_cap")
     parser.add_argument("--dc-ind", type=float, default=0.0005, dest="dc_ind")
+    parser.add_argument("--dead-time-us", type=float, default=0.0,
+                        dest="dead_time_us",
+                        help="Dead-time (blanking time) in microseconds")
 
 
 if __name__ == "__main__":

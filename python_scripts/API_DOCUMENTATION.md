@@ -197,6 +197,7 @@ def run(
     grid_freq: float = 50.0,
     dc_cap: float = 0.0035,
     dc_ind: float = 0.0005,
+    dead_time_us: float = 0.0,
 ) -> ComputationResult
 ```
 
@@ -293,6 +294,14 @@ When the LC filter is active, `ComputationResult` includes additional fields:
 | `dc_ind` | `float` | H | `0.0005` | DC-link series inductance (500 µH). Affects ripple shape and conduction angle. |
 
 > **Note:** The grid filter models a **passive diode-bridge rectifier** (6-pulse). It adds 300/360 Hz ripple (6× grid frequency) to the DC-link voltage, which propagates through the PWM to the motor.
+
+#### Dead-Time Effect (Inverter Non-Linearity)
+
+| Parameter | Type | Unit | Default | Description |
+|-----------|------|------|---------|-------------|
+| `dead_time_us` | `float` | µs | `0.0` | Dead-time (blanking time) in microseconds. When > 0, a `DeadTimePWM` decorator applies per-sample voltage error ΔV_err = −sign(i_phase) · (td/Ts) · Vdc to simulate inverter non-linearity. Typical IGBT: 1–4 µs, SiC MOSFET: 0.2–1 µs. Introduces characteristic 5th, 7th, 11th, 13th, … harmonics in the motor current spectrum. |
+
+> **Note:** Dead-time effect models the blanking interval where both upper and lower switches of an inverter leg are turned off to prevent shoot-through. During this interval, output voltage is determined by the freewheeling diode conduction direction, producing a voltage error proportional to (td/Ts)·Vdc with polarity opposite to the phase current sign. When `dead_time_us > 0`, the `DeadTimePWM` decorator is inserted as the **first stage** in a single serial decorator chain: `DeadTimePWM → DCFilteredPWM → OutputLCFilter`, where each stage wraps the accumulated `finalOutput` from the previous stage.
 
 **Return Value:** [`ComputationResult`](#computationresult)
 
@@ -500,6 +509,7 @@ python pmsm_drive_calc.py [OPTIONS]
 | `--vdc` | float | 400.0 | DC-link voltage (V) |
 | `--mod` | str | SVPWM2 | Modulation: `SPWM2`, `IPSPWM3`, `SVPWM2`, `SVPWM3`, `QuasiSVPWM2`, `QuasiSVPWM3`. Note: `SVPWM2`/`SVPWM3` are internally implemented via QuasiSVPWM (zero-sequence injection, avoids ZOH phase lag). |
 | `--third-harmonic` | flag | False | Enable 1/6 third-harmonic injection |
+| `--dead-time-us` | float | 0.0 | Dead-time in microseconds. When > 0, applies DeadTimePWM decorator for inverter non-linearity simulation. |
 
 ### Solver
 
